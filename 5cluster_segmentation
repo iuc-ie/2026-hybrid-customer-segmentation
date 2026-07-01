@@ -1,0 +1,239 @@
+import pandas as pd
+
+import numpy as np
+
+from sklearn.cluster import KMeans, DBSCAN
+
+from sklearn.preprocessing import StandardScaler
+
+from sklearn.metrics import silhouette_score, davies_bouldin_score
+
+import os
+
+import tkinter as tk
+
+from tkinter import filedialog
+
+import matplotlib.pyplot as plt
+
+import seaborn as sns
+
+ 
+
+root = tk.Tk()
+
+root.withdraw()
+
+root.attributes('-topmost', True)
+
+ 
+
+print("Lütfen güncel 'Sayısal_Veri_Seti' dosyanızı seçin...")
+
+dosya_yolu = filedialog.askopenfilename(
+
+   title="Model Verisini Seçin",
+
+   filetypes=(("Excel Dosyaları", "*.xlsx *.xls"), ("CSV Dosyaları", "*.csv"), ("Tüm Dosyalar", "*.*"))
+
+)
+
+ 
+
+if not dosya_yolu:
+
+   print("Dosya seçilmedi, işlem iptal edildi.")
+
+   exit()
+
+ 
+
+print(f"\nVeri okunuyor: {dosya_yolu}")
+
+ 
+
+if dosya_yolu.endswith('.csv'):
+
+   df = pd.read_csv(dosya_yolu)
+
+else:
+
+   df = pd.read_excel(dosya_yolu, sheet_name=0)
+
+ 
+
+hedef_ozellikler = ['uni_kodu', 'bolum_kodu', 'totalamount', 'discount', 'usercity', 'sinif', 'sms_tekrar_sayisi', 'indirim_kodu']
+
+mevcut_ozellikler = [col for col in hedef_ozellikler if col in df.columns]
+
+X = df[mevcut_ozellikler]
+
+ 
+
+print(f"Analize Dahil Edilen Değişkenler: {mevcut_ozellikler}")
+
+ 
+
+print("Veri ölçeklendiriliyor...")
+
+scaler = StandardScaler()
+
+X_scaled = scaler.fit_transform(X)
+
+ 
+
+print(f"\n--- Adım 1: K-Means++ ile Tüm Veride 5 Küme Oluşturuluyor ---")
+
+kmeans_model = KMeans(n_clusters=5, init='k-means++', random_state=42)
+
+df['KMeans_Segment'] = kmeans_model.fit_predict(X_scaled)
+
+ 
+
+print("\n--- Adım 2: DBSCAN ile Gürültü ve Aykırı Değer Tespiti Yapılıyor ---")
+
+dbscan_model = DBSCAN(eps=1.5, min_samples=5, n_jobs=-1)
+
+df['DBSCAN_Segment'] = dbscan_model.fit_predict(X_scaled)
+
+ 
+
+df['Segment'] = np.where(
+
+   df['DBSCAN_Segment'] == -1,
+
+   'Gürültü_Aykiri_Grup',
+
+   'Segment_' + (df['KMeans_Segment'] + 1).astype(str)
+
+)
+
+print("\n--- Performans Değerlendirmesi (Metodolojik Saf Veri İçin) ---")
+
+saf_veri_mask = df['Segment'] != 'Gürültü_Aykiri_Grup'
+
+if saf_veri_mask.sum() > 1:
+
+   X_saf = X_scaled[saf_veri_mask]
+
+   saf_etiketler = df.loc[saf_veri_mask, 'Segment']
+
+   
+
+   if len(X_saf) > 10000:
+
+       sil_score = silhouette_score(X_saf, saf_etiketler, sample_size=10000, random_state=42)
+
+   else:
+
+       sil_score = silhouette_score(X_saf, saf_etiketler)
+
+       
+
+   db_score = davies_bouldin_score(X_saf, saf_etiketler)
+
+   print(f"Silhouette Skoru: {sil_score:.4f}")
+
+   print(f"Davies-Bouldin İndeksi: {db_score:.4f}")
+
+ 
+
+print("\n--- Segment Karakteristikleri Tablosu Hesaplanıyor ---")
+
+ 
+
+karakteristik_sutunlari = [col for col in ['totalamount', 'discount', 'sms_tekrar_sayisi', 'sinif'] if col in df.columns]
+
+ 
+
+profil_tablosu = df.groupby('Segment')[karakteristik_sutunlari].mean()
+
+ 
+
+profil_tablosu['Musteri_Sayisi'] = df['Segment'].value_counts()
+
+profil_tablosu['Musteri_Yuzdesi (%)'] = (df['Segment'].value_counts(normalize=True) * 100).round(2)
+
+ 
+
+yeni_sira = ['Musteri_Sayisi', 'Musteri_Yuzdesi (%)'] + karakteristik_sutunlari
+
+profil_tablosu = profil_tablosu[yeni_sira].round(2)
+
+ 
+
+print("\n" + "="*80)
+
+print("             TEZ UYGULAMASI: 5 ANA SEGMENT + 1 GÜRÜLTÜ KÜMESİ")
+
+print("="*80)
+
+print(profil_tablosu.to_string())
+
+print("="*80)
+
+ 
+
+kayit_klasoru = os.path.dirname(dosya_yolu)
+
+rapor_yolu = os.path.join(kayit_klasoru, "Tez_Metodolojisi_Segment_Raporu.xlsx")
+
+ 
+
+with pd.ExcelWriter(rapor_yolu, engine='openpyxl') as writer:
+
+   df.to_excel(writer, sheet_name='Musteri_Loglari', index=False)
+
+   profil_tablosu.to_excel(writer, sheet_name='Segment_Karakteristikleri')
+
+ 
+
+print("\n--- Grafik Oluşturuluyor: Tez Metodolojisine Uygun Davranış Haritası ---")
+
+ 
+
+if grafik_ozellikleri := [col for col in ['totalamount', 'discount', 'sms_tekrar_sayisi', 'sinif'] if col in df.columns]:
+
+   segment_davranis = df.groupby('Segment')[grafik_ozellikleri].mean()
+
+   segment_davranis_scaled = (segment_davranis - segment_davranis.min()) / (segment_davranis.max() - segment_davranis.min())
+
+   
+
+   plt.figure(figsize=(10, 7))
+
+   sns.heatmap(
+
+       segment_davranis_scaled,
+
+       annot=segment_davranis.round(2),
+
+       cmap="YlGnBu",                  
+
+       fmt=".2f",                      
+
+       linewidths=0.5,                
+
+       cbar_kws={'label': 'Göreceli Yoğunluk (0-1)'}
+
+   )
+
+   
+
+   plt.title("Tez Uygulaması: 5 Ana Segment ve Gürültü Kümesi Dağılımı", fontsize=14, fontweight='bold', pad=20)
+
+   plt.ylabel("Gruplar (Hibrit Yapı)", fontsize=12)
+
+   plt.xlabel("Davranışsal Özellikler", fontsize=12)
+
+   plt.tight_layout()
+
+   
+
+   grafik_yolu = os.path.join(kayit_klasoru, "Tez_Metodolojisi_Davranis_Haritasi.png")
+
+   plt.savefig(grafik_yolu, dpi=300)
+
+   plt.show()
+
+ 
