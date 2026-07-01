@@ -1,0 +1,1 @@
+# capstone-projects-2025-2026-senacicek
