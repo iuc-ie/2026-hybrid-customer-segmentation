@@ -18,15 +18,6 @@ Dynamic cluster discovery using Affinity Propagation for automatic K determinati
 - **Output**: Excel report with hybrid segment assignments
 - **Use Case**: When discovering natural cluster structure from data
 
-## Model Comparison
-
-| Feature | 5cluster_segmentation | hybrid_model |
-|---------|----------------------|--------------|
-| Cluster Count | Fixed (5) | Dynamic (AP-determined) |
-| Visualization | ✅ Heatmap PNG | ❌ Excel only |
-| Speed | Fast | Medium |
-| Data Adaptability | Fixed | Automatic |
-
 ## Installation
 
 ```bash
